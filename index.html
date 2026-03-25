@@ -4,8 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>小小書法家 - 漢字練習簿</title>
+    <!-- 引入 Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入 Hanzi Writer -->
     <script src="https://cdn.jsdelivr.net/npm/hanzi-writer@3.5/dist/hanzi-writer.min.js"></script>
+    <!-- 引入 SweetAlert2 -->
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
     <style>
@@ -17,6 +20,8 @@
             font-family: 'Kaiti', 'PingFang TC', 'Microsoft JhengHei', sans-serif;
             background-color: #78716c; 
             background-image: url("data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M20 20.5V18H0v-2h20v-2H0v-2h20v-2H0V8h20V6H0V4h20V2H0V0h22v20h2V0h2v20h2V0h2v20h2V0h2v20h2v2H20v-1.5zM0 20h2v20H0V20zm4 0h2v20H4V20zm4 0h2v20H8V20zm4 0h2v20h-2V20zm4 0h2v20h-2V20zm4 4h20v2H20v-2zm0 4h20v2H20v-2zm0 4h20v2H20v-2zm0 4h20v2H20v-2z' fill='%2357534e' fill-opacity='0.4' fill-rule='evenodd'/%3E%3C/svg%3E");
+            /* 避免網頁在手機上下滾動 */
+            overscroll-behavior: none;
         }
         .xuan-paper {
             background-color: #fdf6e3; 
@@ -24,13 +29,19 @@
             box-shadow: 0 10px 25px rgba(0,0,0,0.2), inset 0 0 20px rgba(139, 69, 19, 0.1);
             position: relative;
         }
+        
+        /* 畫布與 SVGs 自適應縮放 */
         #paper-container { position: relative; }
-        .grid-svg { position: absolute; inset: 0; pointer-events: none; z-index: 10; }
-        #character-target { position: absolute; inset: 0; z-index: 20; touch-action: none; }
+        .grid-svg { position: absolute; inset: 0; pointer-events: none; z-index: 10; width: 100%; height: 100%; }
+        #character-target { position: absolute; inset: 0; z-index: 20; touch-action: none; width: 100%; height: 100%; }
+        /* 強制 HanziWriter 產生的 SVG 填滿容器，達到 RWD 效果 */
+        #character-target svg { width: 100% !important; height: 100% !important; }
         #freehand-canvas {
             position: absolute; inset: 0; z-index: 30; 
             touch-action: none; pointer-events: none; cursor: crosshair;
+            width: 100%; height: 100%; /* 顯示大小自適應容器 */
         }
+
         .btn-press { transition: transform 0.1s, box-shadow 0.1s; }
         .btn-press:active { transform: translateY(2px); box-shadow: none !important; }
         .mode-active {
@@ -39,20 +50,19 @@
         }
     </style>
 </head>
-<body class="flex flex-col items-center justify-center min-h-screen p-4">
+<!-- 使用 h-[100dvh] 解決各種手機瀏覽器高度適應問題 -->
+<body class="flex flex-col items-center justify-center h-[100dvh] w-full md:p-4 p-0 m-0 overflow-hidden">
 
-    <div class="max-w-md w-full bg-white rounded-2xl shadow-2xl overflow-hidden border-4 border-amber-900/20">
-        <div class="bg-amber-100 py-3 px-4 border-b-2 border-amber-200 flex flex-col gap-3">
-            <div class="flex items-center justify-between">
-                <h1 class="text-xl font-bold text-amber-900 flex items-center gap-2">
-                    <span class="text-2xl">✍️</span> 小小書法家
-                </h1>
-                <div class="flex items-center gap-1 bg-amber-50 px-2 py-1 rounded-lg border border-amber-200 shadow-sm">
-                    <button onclick="prevChar()" class="p-1 bg-white hover:bg-amber-200 rounded text-amber-800 disabled:opacity-40 disabled:hover:bg-white transition" id="btn-prev">⬅️</button>
-                    <span id="char-progress" class="font-bold text-amber-900 text-base w-12 text-center">-/-</span>
-                    <button onclick="nextChar()" class="p-1 bg-white hover:bg-amber-200 rounded text-amber-800 disabled:opacity-40 disabled:hover:bg-white transition" id="btn-next">➡️</button>
-                </div>
-            </div>
+    <!-- 容器自動填滿剩餘高度，並在小螢幕時無圓角 -->
+    <div class="max-w-md w-full h-full md:h-auto bg-white md:rounded-2xl shadow-2xl flex flex-col overflow-hidden border-0 md:border-4 border-amber-900/20">
+        
+        <!-- 頂部區塊 (不縮放 shrink-0) -->
+        <div class="bg-amber-100 py-3 px-4 border-b-2 border-amber-200 flex flex-col gap-3 shrink-0">
+            <h1 class="text-xl font-bold text-amber-900 flex items-center gap-2">
+                <span class="text-2xl">✍️</span> 小小書法家
+            </h1>
+            
+            <!-- 第一排：輸入字帖 -->
             <div class="flex gap-2">
                 <input type="text" id="char-input" value="天地玄黃" placeholder="輸入多個字..." 
                        class="flex-1 h-10 px-3 text-lg font-bold border-2 border-amber-300 rounded focus:outline-none focus:border-amber-600 bg-white"
@@ -62,40 +72,56 @@
                     載入字帖
                 </button>
             </div>
+
+            <!-- 第二排：更顯眼的上下一張導航 -->
+            <div class="flex items-center justify-between bg-white/60 p-1.5 rounded-xl border border-amber-200/60 shadow-inner">
+                <button onclick="prevChar()" class="flex-1 py-1.5 bg-white hover:bg-amber-200 rounded-lg text-amber-800 disabled:opacity-40 disabled:hover:bg-white transition shadow-sm font-bold flex items-center justify-center gap-1 active:bg-amber-300" id="btn-prev">
+                    <span>⬅️</span> 上一字
+                </button>
+                <span id="char-progress" class="font-bold text-amber-900 text-lg w-16 text-center">-/-</span>
+                <button onclick="nextChar()" class="flex-1 py-1.5 bg-white hover:bg-amber-200 rounded-lg text-amber-800 disabled:opacity-40 disabled:hover:bg-white transition shadow-sm font-bold flex items-center justify-center gap-1 active:bg-amber-300" id="btn-next">
+                    下一字 <span>➡️</span>
+                </button>
+            </div>
         </div>
 
-        <div class="p-6 flex flex-col items-center bg-gray-50">
-            <div id="paper-container" class="xuan-paper border-4 border-red-700/80 rounded-sm w-[300px] h-[300px]">
-                <svg class="grid-svg w-full h-full" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 300">
+        <!-- 中間畫布區 (自適應剩餘空間 flex-1, 最小高度 min-h-0 防擠壓) -->
+        <div class="flex-1 p-2 sm:p-4 flex flex-col items-center justify-center bg-gray-50 overflow-hidden min-h-0">
+            <!-- 畫布容器：使用 aspect-square 保持正方形，最大不超過 300px -->
+            <div id="paper-container" class="xuan-paper border-4 border-red-700/80 rounded-sm w-full max-w-[300px] aspect-square shrink-0">
+                <svg class="grid-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 300">
                     <line x1="0" y1="0" x2="300" y2="300" stroke="#dc2626" stroke-dasharray="6,6" stroke-width="2" opacity="0.4"/>
                     <line x1="300" y1="0" x2="0" y2="300" stroke="#dc2626" stroke-dasharray="6,6" stroke-width="2" opacity="0.4"/>
                     <line x1="150" y1="0" x2="150" y2="300" stroke="#dc2626" stroke-dasharray="6,6" stroke-width="2" opacity="0.4"/>
                     <line x1="0" y1="150" x2="300" y2="150" stroke="#dc2626" stroke-dasharray="6,6" stroke-width="2" opacity="0.4"/>
                 </svg>
                 <div id="character-target"></div>
+                <!-- Canvas 內部解析度維持 300x300，確保墨跡清晰 -->
                 <canvas id="freehand-canvas" width="300" height="300"></canvas>
             </div>
-            <div id="status-msg" class="mt-4 h-8 text-lg font-bold text-amber-700 flex items-center justify-center text-center">
+            
+            <div id="status-msg" class="mt-2 h-8 text-base sm:text-lg font-bold text-amber-700 flex items-center justify-center text-center shrink-0">
                 請選擇下方的練習模式！
             </div>
         </div>
 
-        <div class="bg-amber-50 p-4 grid grid-cols-2 gap-3 border-t-2 border-amber-100">
-            <button onclick="startAnimation()" class="btn-press flex flex-col items-center justify-center py-2 bg-blue-500 text-white rounded-xl shadow-[0_4px_0_#2563eb] hover:bg-blue-400">
-                <span class="text-2xl mb-1">🎬</span>
-                <span class="font-bold">筆畫示範</span>
+        <!-- 底部控制按鈕區 (不縮放 shrink-0) -->
+        <div class="bg-amber-50 p-2 sm:p-4 grid grid-cols-2 gap-2 sm:gap-3 border-t-2 border-amber-100 shrink-0">
+            <button onclick="startAnimation()" class="btn-press flex flex-col items-center justify-center py-2 sm:py-3 bg-blue-500 text-white rounded-xl shadow-[0_4px_0_#2563eb] hover:bg-blue-400">
+                <span class="text-xl sm:text-2xl mb-0.5 sm:mb-1">🎬</span>
+                <span class="font-bold text-sm sm:text-base">筆畫示範</span>
             </button>
-            <button id="btn-quiz" onclick="startQuizMode()" class="btn-press flex flex-col items-center justify-center py-2 bg-green-500 text-white rounded-xl shadow-[0_4px_0_#16a34a] hover:bg-green-400">
-                <span class="text-2xl mb-1">🎯</span>
-                <span class="font-bold">筆順測驗</span>
+            <button id="btn-quiz" onclick="startQuizMode()" class="btn-press flex flex-col items-center justify-center py-2 sm:py-3 bg-green-500 text-white rounded-xl shadow-[0_4px_0_#16a34a] hover:bg-green-400">
+                <span class="text-xl sm:text-2xl mb-0.5 sm:mb-1">🎯</span>
+                <span class="font-bold text-sm sm:text-base">筆順測驗</span>
             </button>
-            <button id="btn-classic" onclick="startClassicMode()" class="btn-press flex flex-col items-center justify-center py-2 bg-purple-500 text-white rounded-xl shadow-[0_4px_0_#9333ea] hover:bg-purple-400">
-                <span class="text-2xl mb-1">🖌️</span>
-                <span class="font-bold">自由書寫</span>
+            <button id="btn-classic" onclick="startClassicMode()" class="btn-press flex flex-col items-center justify-center py-2 sm:py-3 bg-purple-500 text-white rounded-xl shadow-[0_4px_0_#9333ea] hover:bg-purple-400">
+                <span class="text-xl sm:text-2xl mb-0.5 sm:mb-1">🖌️</span>
+                <span class="font-bold text-sm sm:text-base">自由書寫</span>
             </button>
-            <button onclick="resetCanvas()" class="btn-press flex flex-col items-center justify-center py-2 bg-red-400 text-white rounded-xl shadow-[0_4px_0_#dc2626] hover:bg-red-300">
-                <span class="text-2xl mb-1">✨</span>
-                <span class="font-bold">清除重來</span>
+            <button onclick="resetCanvas()" class="btn-press flex flex-col items-center justify-center py-2 sm:py-3 bg-red-400 text-white rounded-xl shadow-[0_4px_0_#dc2626] hover:bg-red-300">
+                <span class="text-xl sm:text-2xl mb-0.5 sm:mb-1">✨</span>
+                <span class="font-bold text-sm sm:text-base">清除重來</span>
             </button>
         </div>
     </div>
@@ -128,6 +154,7 @@
 
         function initWriter(character) {
             targetDiv.innerHTML = '';
+            // 引擎大小維持 300x300，實際顯示大小會透過 CSS auto-scaling 自動適應
             writer = HanziWriter.create('character-target', character, {
                 width: 300, height: 300, padding: 15,
                 strokeAnimationSpeed: 0.8, strokeHighlightSpeed: 0.8, delayBetweenStrokes: 300,
@@ -136,14 +163,22 @@
             });
         }
 
-        // --- 繪圖修正：增加點擊即可畫出點 ---
+        // --- 繪圖修正：動態座標縮放 ---
+        // 由於 Canvas 現在會跟著螢幕大小縮放 (RWD)，我們必須將畫面滑動的實際座標，轉換回內部 300x300 解析度的座標。
         function getPointerPos(e) {
             const rect = freehandCanvas.getBoundingClientRect();
             let clientX = e.clientX, clientY = e.clientY;
             if (e.touches && e.touches.length > 0) {
                 clientX = e.touches[0].clientX; clientY = e.touches[0].clientY;
             }
-            return { x: clientX - rect.left, y: clientY - rect.top };
+            // 計算縮放比例
+            const scaleX = 300 / rect.width;
+            const scaleY = 300 / rect.height;
+            
+            return { 
+                x: (clientX - rect.left) * scaleX, 
+                y: (clientY - rect.top) * scaleY 
+            };
         }
 
         function startDrawing(e) {
@@ -153,7 +188,7 @@
             const pos = getPointerPos(e);
             ctx.beginPath();
             ctx.moveTo(pos.x, pos.y);
-            ctx.lineTo(pos.x, pos.y + 0.1); // 確保單次點擊也能留下墨跡
+            ctx.lineTo(pos.x, pos.y + 0.1); 
             ctx.stroke();
         }
 
@@ -181,7 +216,7 @@
         freehandCanvas.addEventListener('touchcancel', stopDrawing);
 
         function updateStatus(text, colorClass = 'text-amber-700') {
-            statusMsg.className = `mt-4 h-8 text-lg font-bold flex items-center justify-center text-center ${colorClass}`;
+            statusMsg.className = `mt-2 h-8 text-base sm:text-lg font-bold flex items-center justify-center text-center ${colorClass}`;
             statusMsg.innerText = text;
         }
 
@@ -199,7 +234,6 @@
             return num.toString();
         }
 
-        // 避免在不支援 speechSynthesis 的瀏覽器中發生致命錯誤
         if (window.speechSynthesis && window.speechSynthesis.onvoiceschanged !== undefined) {
             window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
         }
@@ -220,7 +254,6 @@
         document.body.addEventListener('click', unlockSpeech, { once: true });
 
         function speak(text, onEndCallback, interrupt = true) {
-            // 若環境不支援語音，直接執行 callback 確保動畫順暢往下跑
             if (!window.speechSynthesis) {
                 if (onEndCallback) onEndCallback();
                 return;
@@ -364,7 +397,7 @@
             targetDiv.style.pointerEvents = 'auto';
             ctx.clearRect(0, 0, freehandCanvas.width, freehandCanvas.height); 
             writer.showOutline(); writer.hideCharacter();
-            updateStatus('【筆順測驗】寫錯會提示，系統會自動修正喔！', 'text-green-600');
+            updateStatus('【筆順測驗】寫錯會提示，系統自動修正', 'text-green-600');
             currentQuizStroke = 0; resetHintTimer();
 
             writer.quiz({
