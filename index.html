@@ -356,6 +356,7 @@
         }
 
         function startAnimation() {
+            unlockSpeech(); // 確保每次點擊都強制喚醒語音與音效系統
             clearHintTimer(); clearActiveButtons(); cancelAnimationSequence(); 
             animationCanceled = false;
             writer.cancelQuiz();
@@ -363,7 +364,10 @@
             ctx.clearRect(0, 0, freehandCanvas.width, freehandCanvas.height); 
             writer.showOutline(); writer.hideCharacter();
             updateStatus('仔細看筆順喔！', 'text-blue-600');
-            setTimeout(() => { if (!animationCanceled) animateStrokesSequentially(0); }, 200);
+            
+            // 移除原本的 setTimeout 延遲，直接呼叫語音與動畫
+            // 這是為了確保瀏覽器判定語音是由「使用者點擊按鈕」直接觸發的，避免被靜音機制阻擋
+            if (!animationCanceled) animateStrokesSequentially(0);
         }
 
         function animateStrokesSequentially(strokeNum) {
@@ -391,6 +395,7 @@
         }
 
         function startQuizMode() {
+            unlockSpeech(); // 確保每次點擊都強制喚醒語音與音效系統
             cancelAnimationSequence(); clearActiveButtons();
             document.getElementById('btn-quiz').classList.add('mode-active');
             freehandCanvas.style.pointerEvents = 'none';
@@ -419,7 +424,7 @@
                     playSuccessArpeggio();
                     if (currentIndex < charList.length - 1) {
                         Swal.fire({
-                            title: '筆順滿分！', text: '要繼續寫下一個字嗎？', icon: 'success',
+                            title: '筆順過關!', text: '要繼續寫下一個字嗎？', icon: 'success',
                             showCancelButton: true, confirmButtonColor: '#16a34a', cancelButtonColor: '#9333ea',
                             confirmButtonText: '寫下一個字', cancelButtonText: '試試自由書寫'
                         }).then((result) => {
