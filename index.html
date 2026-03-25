@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>小小書法家 - 漢字練習簿</title>
+    <!-- 引入 Tailwind CSS 進行快速排版 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入 Hanzi Writer 核心庫 -->
+    <script src="https://cdn.jsdelivr.net/npm/hanzi-writer@3.5/dist/hanzi-writer.min.js"></script>
+    <!-- 引入 SweetAlert2 美化提示框 -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+    <style>
+        /* 載入標準楷體，讓字型看起來像書法字 */
+        @font-face {
+            font-family: 'Kaiti';
+            src: local('BiauKai'), local('DFKai-SB'), local('Kaiti TC'), local('STKaiti'), local('KaiTi');
+        }
+
+        body {
+            font-family: 'Kaiti', 'PingFang TC', 'Microsoft JhengHei', sans-serif;
+            background-color: #78716c; /* 深木頭色背景 */
+            background-image: url("data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M20 20.5V18H0v-2h20v-2H0v-2h20v-2H0V8h20V6H0V4h20V2H0V0h22v20h2V0h2v20h2V0h2v20h2V0h2v20h2V0h2v20h2v2H20v-1.5zM0 20h2v20H0V20zm4 0h2v20H4V20zm4 0h2v20H8V20zm4 0h2v20h-2V20zm4 0h2v20h-2V20zm4 4h20v2H20v-2zm0 4h20v2H20v-2zm0 4h20v2H20v-2zm0 4h20v2H20v-2z' fill='%2357534e' fill-opacity='0.4' fill-rule='evenodd'/%3E%3C/svg%3E");
+        }
+
+        /* 宣紙質感背景 */
+        .xuan-paper {
+            background-color: #fdf6e3; /* 米黃色 */
+            background-image: url("data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100' height='100' filter='url(%23noise)' opacity='0.08'/%3E%3C/svg%3E");
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2), inset 0 0 20px rgba(139, 69, 19, 0.1);
+            position: relative;
+        }
+
+        /* 畫布容器與圖層設定 */
+        #paper-container {
+            position: relative;
+        }
+
+        .grid-svg {
+            position: absolute;
+            inset: 0;
+            pointer-events: none; /* 穿透點擊 */
+            z-index: 10;
+        }
+
+        #character-target {
+            position: absolute;
+            inset: 0;
+            z-index: 20;
+            touch-action: none;
+        }
+
+        /* 自由書寫的 Canvas (經典模式) */
+        #freehand-canvas {
+            position: absolute;
+            inset: 0;
+            z-index: 30;
+            touch-action: none; /* 防止滑動螢幕 */
+            pointer-events: none; /* 預設關閉，切換模式時開啟 */
+            cursor: crosshair;
+        }
+
+        .btn-press {
+            transition: transform 0.1s, box-shadow 0.1s;
+        }
+        .btn-press:active {
+            transform: translateY(2px);
+            box-shadow: none !important;
+        }
+        
+        /* 啟用模式時的按鈕高亮效果 */
+        .mode-active {
+            ring: 4px;
+            ring-color: #fbbf24;
+            transform: translateY(2px);
+            box-shadow: none !important;
+            filter: brightness(1.1);
+        }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-center min-h-screen p-4">
+
+    <div class="max-w-md w-full bg-white rounded-2xl shadow-2xl overflow-hidden border-4 border-amber-900/20">
+        
+        <!-- 標題區與批次輸入區 -->
+        <div class="bg-amber-100 py-3 px-4 border-b-2 border-amber-200 flex flex-col gap-3">
+            <div class="flex items-center justify-between">
+                <h1 class="text-xl font-bold text-amber-900 flex items-center gap-2">
+                    <span class="text-2xl">✍️</span> 小小書法家
+                </h1>
+                <!-- 批次切換導航 -->
+                <div class="flex items-center gap-1 bg-amber-50 px-2 py-1 rounded-lg border border-amber-200 shadow-sm">
+                    <button onclick="prevChar()" class="p-1 bg-white hover:bg-amber-200 rounded text-amber-800 disabled:opacity-40 disabled:hover:bg-white transition" id="btn-prev">⬅️</button>
+                    <span id="char-progress" class="font-bold text-amber-900 text-base w-12 text-center">1/1</span>
+                    <button onclick="nextChar()" class="p-1 bg-white hover:bg-amber-200 rounded text-amber-800 disabled:opacity-40 disabled:hover:bg-white transition" id="btn-next">➡️</button>
+                </div>
+            </div>
+            <div class="flex gap-2">
+                <input type="text" id="char-input" value="天地玄黃" placeholder="輸入多個字來建立字帖..." 
+                       class="flex-1 h-10 px-3 text-lg font-bold border-2 border-amber-300 rounded focus:outline-none focus:border-amber-600 bg-white"
+                       onclick="this.select()">
+                <button onclick="loadCharacters()" 
+                        class="bg-amber-600 text-white px-4 py-1 rounded hover:bg-amber-700 active:bg-amber-800 transition font-bold whitespace-nowrap shadow-sm">
+                    載入字帖
+                </button>
+            </div>
+        </div>
+
+        <!-- 畫布區 (宣紙與米字格) -->
+        <div class="p-6 flex flex-col items-center bg-gray-50">
+            <!-- 宣紙容器 (包含所有圖層) -->
+            <div id="paper-container" class="xuan-paper border-4 border-red-700/80 rounded-sm w-[300px] h-[300px]">
+                
+                <!-- 1. 米字格 SVG 線條 (底層) -->
+                <svg class="grid-svg w-full h-full" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 300">
+                    <line x1="0" y1="0" x2="300" y2="300" stroke="#dc2626" stroke-dasharray="6,6" stroke-width="2" opacity="0.4"/>
+                    <line x1="300" y1="0" x2="0" y2="300" stroke="#dc2626" stroke-dasharray="6,6" stroke-width="2" opacity="0.4"/>
+                    <line x1="150" y1="0" x2="150" y2="300" stroke="#dc2626" stroke-dasharray="6,6" stroke-width="2" opacity="0.4"/>
+                    <line x1="0" y1="150" x2="300" y2="150" stroke="#dc2626" stroke-dasharray="6,6" stroke-width="2" opacity="0.4"/>
+                </svg>
+
+                <!-- 2. Hanzi Writer 渲染目標 (中層：示範與筆順測驗) -->
+                <div id="character-target"></div>
+
+                <!-- 3. 自由書寫 Canvas (頂層：經典模式專用) -->
+                <canvas id="freehand-canvas" width="300" height="300"></canvas>
+            </div>
+
+            <!-- 狀態提示框 -->
+            <div id="status-msg" class="mt-4 h-8 text-lg font-bold text-amber-700 flex items-center justify-center text-center">
+                請選擇下方的練習模式！
+            </div>
+        </div>
+
+        <!-- 控制按鈕區 (2x2 網格) -->
+        <div class="bg-amber-50 p-4 grid grid-cols-2 gap-3 border-t-2 border-amber-100">
+            <button onclick="startAnimation()" class="btn-press flex flex-col items-center justify-center py-2 bg-blue-500 text-white rounded-xl shadow-[0_4px_0_#2563eb] hover:bg-blue-400">
+                <span class="text-2xl mb-1">🎬</span>
+                <span class="font-bold">筆畫示範</span>
+            </button>
+            <button id="btn-quiz" onclick="startQuizMode()" class="btn-press flex flex-col items-center justify-center py-2 bg-green-500 text-white rounded-xl shadow-[0_4px_0_#16a34a] hover:bg-green-400">
+                <span class="text-2xl mb-1">🎯</span>
+                <span class="font-bold">筆順測驗 (引導)</span>
+            </button>
+            <button id="btn-classic" onclick="startClassicMode()" class="btn-press flex flex-col items-center justify-center py-2 bg-purple-500 text-white rounded-xl shadow-[0_4px_0_#9333ea] hover:bg-purple-400">
+                <span class="text-2xl mb-1">🖌️</span>
+                <span class="font-bold">自由書寫 (經典)</span>
+            </button>
+            <button onclick="resetCanvas()" class="btn-press flex flex-col items-center justify-center py-2 bg-red-400 text-white rounded-xl shadow-[0_4px_0_#dc2626] hover:bg-red-300">
+                <span class="text-2xl mb-1">✨</span>
+                <span class="font-bold">清除重來</span>
+            </button>
+        </div>
+    </div>
+
+    <script>
+        let writer;
+        const targetDiv = document.getElementById('character-target');
+        const inputElement = document.getElementById('char-input');
+        const statusMsg = document.getElementById('status-msg');
+        
+        // 批次字帖相關變數
+        let charList = ['天', '地', '玄', '黃'];
+        let currentIndex = 0;
+
+        // 語音與音效示範相關變數
+        let speechUtterance = null;
+        let animationCanceled = false;
+        let speechUnlocked = false;
+        let audioCtx = null; // 音效 Context
+        
+        // 發呆提示相關變數
+        let hintTimer = null;
+        let currentQuizStroke = 0;
+
+        // 自由書寫 Canvas 相關變數
+        const freehandCanvas = document.getElementById('freehand-canvas');
+        const ctx = freehandCanvas.getContext('2d');
+        let isDrawing = false;
+
+        // 設定畫筆樣式 (模仿毛筆/麥克筆)
+        ctx.lineWidth = 18;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.strokeStyle = '#333333'; // 墨水顏色
+
+        // 初始化 Hanzi Writer
+        function initWriter(character) {
+            targetDiv.innerHTML = '';
+            
+            writer = HanziWriter.create('character-target', character, {
+                width: 300,
+                height: 300,
+                padding: 15,
+                strokeAnimationSpeed: 0.8,   // 放慢正常動畫速度
+                strokeHighlightSpeed: 0.8,   // 【新增】讓發呆提示的筆畫動畫速度，跟正常示範速度一樣慢
+                delayBetweenStrokes: 300,
+                strokeColor: '#1f2937',    
+                radicalColor: '#1f2937',   
+                highlightColor: '#ef4444',   // 預設寫錯時的提示顏色 (紅色)
+                outlineColor: '#d1d5db',   
+                drawingWidth: 18,          
+                drawingColor: '#333333',   
+                showOutline: true          
+            });
+        }
+
+        // --- 自由書寫 (Canvas) 邏輯 ---
+        function getPointerPos(e) {
+            const rect = freehandCanvas.getBoundingClientRect();
+            let clientX = e.clientX;
+            let clientY = e.clientY;
+            
+            if (e.touches && e.touches.length > 0) {
+                clientX = e.touches[0].clientX;
+                clientY = e.touches[0].clientY;
+            }
+            
+            return { x: clientX - rect.left, y: clientY - rect.top };
+        }
+
+        function startDrawing(e) {
+            if (e.touches && e.touches.length > 1) return; // 多指操作時不觸發繪圖
+            if (e.cancelable) e.preventDefault(); 
+            isDrawing = true;
+            const pos = getPointerPos(e);
+            ctx.beginPath();
+            ctx.moveTo(pos.x, pos.y);
+            ctx.lineTo(pos.x, pos.y);
+            ctx.stroke();
+        }
+
+        function draw(e) {
+            if (!isDrawing) return;
+            if (e.touches && e.touches.length > 1) { 
+                stopDrawing();
+                return;
+            }
+            if (e.cancelable) e.preventDefault();
+            const pos = getPointerPos(e);
+            ctx.lineTo(pos.x, pos.y);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(pos.x, pos.y);
+        }
+
+        function stopDrawing() {
+            isDrawing = false;
+            ctx.beginPath();
+        }
+
+        freehandCanvas.addEventListener('mousedown', startDrawing);
+        freehandCanvas.addEventListener('mousemove', draw);
+        freehandCanvas.addEventListener('mouseup', stopDrawing);
+        freehandCanvas.addEventListener('mouseout', stopDrawing);
+
+        freehandCanvas.addEventListener('touchstart', startDrawing, { passive: false });
+        freehandCanvas.addEventListener('touchmove', draw, { passive: false });
+        freehandCanvas.addEventListener('touchend', stopDrawing);
+        freehandCanvas.addEventListener('touchcancel', stopDrawing);
+
+        // --- 模式控制與介面 ---
+        function updateStatus(text, colorClass = 'text-amber-700') {
+            statusMsg.className = `mt-4 h-8 text-lg font-bold flex items-center justify-center text-center ${colorClass}`;
+            statusMsg.innerText = text;
+        }
+
+        function clearActiveButtons() {
+            document.getElementById('btn-quiz').classList.remove('mode-active');
+            document.getElementById('btn-classic').classList.remove('mode-active');
+        }
+
+        // --- 語音合成 (Web Speech API) ---
+        function numberToChinese(num) {
+            const zh = ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九', '十'];
+            if (num <= 10) return zh[num];
+            if (num < 20) return '十' + (num % 10 === 0 ? '' : zh[num % 10]);
+            if (num < 100) return zh[Math.floor(num / 10)] + '十' + (num % 10 === 0 ? '' : zh[num % 10]);
+            return num.toString();
+        }
+
+        if (speechSynthesis.onvoiceschanged !== undefined) {
+            speechSynthesis.onvoiceschanged = () => speechSynthesis.getVoices();
+        }
+
+        function unlockSpeech() {
+            if (!speechUnlocked) {
+                const silentUtterance = new SpeechSynthesisUtterance('');
+                window.speechSynthesis.speak(silentUtterance);
+                speechUnlocked = true;
+            }
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }
+        document.body.addEventListener('touchstart', unlockSpeech, { once: true });
+        document.body.addEventListener('click', unlockSpeech, { once: true });
+
+        function speak(text, onEndCallback, interrupt = true) {
+            if (interrupt) window.speechSynthesis.cancel(); 
+            
+            speechUtterance = new SpeechSynthesisUtterance(text);
+            speechUtterance.lang = 'zh-TW';
+            
+            const voices = window.speechSynthesis.getVoices();
+            let bestVoice = voices.find(v => v.lang === 'zh-TW' && (v.name.includes('Google') || v.name.includes('Siri') || v.name.includes('Mei-Jia')));
+            if (!bestVoice) bestVoice = voices.find(v => v.lang.includes('zh-TW') || v.lang.includes('zh-HK'));
+            if (bestVoice) speechUtterance.voice = bestVoice;
+
+            speechUtterance.rate = 0.9; 
+            speechUtterance.pitch = 1.1; 
+            
+            if (onEndCallback) {
+                speechUtterance.onend = onEndCallback;
+                speechUtterance.onerror = onEndCallback; 
+            }
+            window.speechSynthesis.speak(speechUtterance);
+        }
+
+        function cancelAnimationSequence() {
+            animationCanceled = true;
+            window.speechSynthesis.cancel();
+        }
+
+        // --- 音效合成 (Web Audio API) ---
+        function playFeedbackChord() {
+            if (!audioCtx) return;
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+
+            const t = audioCtx.currentTime;
+            const freqs = [523.25, 659.25, 783.99, 1174.66]; // C5, E5, G5, D6
+
+            freqs.forEach(freq => {
+                const osc = audioCtx.createOscillator();
+                const gainNode = audioCtx.createGain();
+
+                osc.type = 'sine'; 
+                osc.frequency.value = freq;
+
+                gainNode.gain.setValueAtTime(0, t);
+                gainNode.gain.linearRampToValueAtTime(0.03, t + 0.05); 
+                gainNode.gain.exponentialRampToValueAtTime(0.001, t + 0.8); 
+
+                osc.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+
+                osc.start(t);
+                osc.stop(t + 0.8);
+            });
+        }
+
+        // 優化過的錯誤音效 (稍微大聲、明顯一點，但依然溫和)
+        function playMistakeBoop() {
+            if (!audioCtx) return;
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+
+            const t = audioCtx.currentTime;
+            const osc = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+
+            osc.type = 'sine'; // 保持使用不刺耳的正弦波
+            
+            // 頻率起點稍微調高 (300Hz)，然後平緩下降，更有提示感
+            osc.frequency.setValueAtTime(300, t);
+            osc.frequency.exponentialRampToValueAtTime(150, t + 0.25);
+
+            gainNode.gain.setValueAtTime(0, t);
+            // 音量稍微調大 (0.04 -> 0.08)，延遲一點點消音時間
+            gainNode.gain.linearRampToValueAtTime(0.08, t + 0.03); 
+            gainNode.gain.exponentialRampToValueAtTime(0.001, t + 0.25); 
+
+            osc.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+
+            osc.start(t);
+            osc.stop(t + 0.25);
+        }
+
+        function playSuccessArpeggio() {
+            if (!audioCtx) return;
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+
+            const t = audioCtx.currentTime;
+            const freqs = [523.25, 659.25, 783.99, 1046.50]; 
+
+            freqs.forEach((freq, i) => {
+                const osc = audioCtx.createOscillator();
+                const gainNode = audioCtx.createGain();
+
+                osc.type = 'triangle'; 
+                osc.frequency.value = freq;
+
+                const startTime = t + (i * 0.08); 
+                gainNode.gain.setValueAtTime(0, startTime);
+                gainNode.gain.linearRampToValueAtTime(0.05, startTime + 0.05);
+                gainNode.gain.exponentialRampToValueAtTime(0.001, startTime + 1.2);
+
+                osc.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+
+                osc.start(startTime);
+                osc.stop(startTime + 1.2);
+            });
+        }
+
+        // --- 發呆引導提示機制 ---
+        function clearHintTimer() {
+            if (hintTimer) {
+                clearTimeout(hintTimer);
+                hintTimer = null;
+            }
+        }
+
+        function resetHintTimer() {
+            clearHintTimer();
+            // 5秒鐘沒有動作，就啟動引導提示
+            hintTimer = setTimeout(showHintGuide, 5000);
+        }
+
+        function showHintGuide() {
+            if (!writer || !writer._character) return;
+            const totalStrokes = writer._character.strokes.length;
+            if (currentQuizStroke >= totalStrokes) return;
+
+            // 暫時將 Highlight 顏色改為半透明藍色
+            writer.updateColor('highlightColor', 'rgba(59, 130, 246, 0.6)');
+            writer.highlightStroke(currentQuizStroke);
+
+            // 【配合速度變慢】由於提示速度變慢了，將恢復顏色的等待時間拉長到 1.5 秒
+            setTimeout(() => {
+                writer.updateColor('highlightColor', '#ef4444');
+            }, 1500);
+
+            // 重新開始計時，如果還是沒寫，5秒後再提示一次
+            resetHintTimer();
+        }
+
+        // --- 核心練習功能 ---
+        function startAnimation() {
+            clearHintTimer(); // 關閉發呆計時器
+            clearActiveButtons();
+            cancelAnimationSequence(); 
+            animationCanceled = false;
+            
+            writer.cancelQuiz();
+            freehandCanvas.style.pointerEvents = 'none'; 
+            ctx.clearRect(0, 0, freehandCanvas.width, freehandCanvas.height); 
+            
+            writer.showOutline();
+            writer.hideCharacter();
+            updateStatus('仔細看筆順喔！', 'text-blue-600');
+            
+            setTimeout(() => {
+                if (!animationCanceled) {
+                    animateStrokesSequentially(0);
+                }
+            }, 200);
+        }
+
+        function animateStrokesSequentially(strokeNum) {
+            if (animationCanceled) return;
+            
+            const strokes = writer._character.strokes;
+            if (!strokes || strokeNum >= strokes.length) {
+                updateStatus('示範結束，請選擇下方模式開始練習！', 'text-green-600');
+                return;
+            }
+
+            const zhNum = numberToChinese(strokeNum + 1);
+            
+            let strokeAnimDone = false;
+            let speechDone = false;
+
+            function proceedNext() {
+                if (strokeAnimDone && speechDone && !animationCanceled) {
+                    setTimeout(() => {
+                        animateStrokesSequentially(strokeNum + 1);
+                    }, 100); 
+                }
+            }
+
+            const speechTimeout = setTimeout(() => {
+                if (!speechDone) {
+                    speechDone = true;
+                    proceedNext();
+                }
+            }, 1500);
+
+            speak(`${zhNum}`, () => {
+                clearTimeout(speechTimeout);
+                speechDone = true;
+                proceedNext();
+            }, true);
+            
+            writer.animateStroke(strokeNum, {
+                onComplete: function() {
+                    strokeAnimDone = true;
+                    proceedNext();
+                }
+            });
+        }
+
+        // 模式 1：筆順測驗 (引導修正)
+        function startQuizMode() {
+            cancelAnimationSequence(); 
+            clearActiveButtons();
+            document.getElementById('btn-quiz').classList.add('mode-active');
+            
+            freehandCanvas.style.pointerEvents = 'none';
+            targetDiv.style.pointerEvents = 'auto';
+            ctx.clearRect(0, 0, freehandCanvas.width, freehandCanvas.height); 
+            
+            writer.showOutline();
+            writer.hideCharacter();
+            updateStatus('【筆順測驗】寫錯會提示，系統會自動修正喔！', 'text-green-600');
+            
+            currentQuizStroke = 0; // 重置目前進度
+            resetHintTimer(); // 啟動發呆偵測
+
+            writer.quiz({
+                onMistake: function(strokeData) {
+                    writer.updateColor('highlightColor', '#ef4444'); // 確保錯誤顏色為紅色
+                    playMistakeBoop(); // 播放稍微明顯一點的錯誤音效
+                    updateStatus(`哎呀！第 ${strokeData.strokeNum + 1} 筆畫錯了，再試一次！`, 'text-red-500');
+                    resetHintTimer(); // 有互動就重置發呆計時器
+                },
+                onCorrectStroke: function(strokeData) {
+                    currentQuizStroke = strokeData.strokeNum + 1; // 推進筆畫進度
+                    resetHintTimer(); // 有互動就重置發呆計時器
+                    
+                    updateStatus(`很棒！繼續寫下一筆。`, 'text-green-600');
+                    playFeedbackChord();
+                    const zhNum = numberToChinese(strokeData.strokeNum + 1);
+                    speak(`${zhNum}`, null, true); 
+                },
+                onComplete: function(summaryData) {
+                    clearHintTimer(); // 完成後關閉發呆偵測
+                    updateStatus('太厲害了！筆順完全正確！🌟', 'text-yellow-600');
+                    playSuccessArpeggio();
+                    
+                    if (currentIndex < charList.length - 1) {
+                        Swal.fire({
+                            title: '筆順滿分！',
+                            text: '你成功寫完這個字了！要繼續寫下一個字嗎？',
+                            icon: 'success',
+                            showCancelButton: true,
+                            confirmButtonColor: '#16a34a',
+                            cancelButtonColor: '#9333ea',
+                            confirmButtonText: '寫下一個字',
+                            cancelButtonText: '試試自由書寫'
+                        }).then((result) => {
+                            clearActiveButtons();
+                            if (result.isConfirmed) {
+                                nextChar();
+                            }
+                        });
+                    } else {
+                        Swal.fire({
+                            title: '太棒了！',
+                            text: '你已經完成這組字帖的所有練習囉！',
+                            icon: 'success',
+                            confirmButtonColor: '#16a34a',
+                            confirmButtonText: '好棒'
+                        });
+                        clearActiveButtons();
+                    }
+                }
+            });
+        }
+
+        // 模式 2：自由書寫 (經典模式 - 看到自己真實筆跡)
+        function startClassicMode() {
+            clearHintTimer(); // 關閉發呆計時器
+            cancelAnimationSequence(); 
+            clearActiveButtons();
+            document.getElementById('btn-classic').classList.add('mode-active');
+            
+            writer.cancelQuiz();
+            writer.showOutline(); 
+            writer.hideCharacter();
+            
+            freehandCanvas.style.pointerEvents = 'auto';
+            targetDiv.style.pointerEvents = 'none';
+            
+            updateStatus('【自由書寫】現在會留下你真實的筆跡囉！', 'text-purple-600');
+        }
+
+        function resetCanvas() {
+            clearHintTimer();
+            cancelAnimationSequence(); 
+            writer.cancelQuiz();
+            writer.hideCharacter();
+            writer.showOutline();
+            
+            ctx.clearRect(0, 0, freehandCanvas.width, freehandCanvas.height);
+            updateStatus('畫布已清除，請重新開始。');
+        }
+
+        // --- 批次處理與按鍵綁定 ---
+        function updateNavUI() {
+            document.getElementById('char-progress').innerText = `${currentIndex + 1}/${charList.length}`;
+            document.getElementById('btn-prev').disabled = currentIndex === 0;
+            document.getElementById('btn-next').disabled = currentIndex === charList.length - 1;
+        }
+
+        function loadCharacters() {
+            const newChars = inputElement.value.replace(/\s+/g, ''); 
+            if (!newChars) return;
+            
+            charList = Array.from(newChars);
+            currentIndex = 0;
+            updateNavUI();
+            loadCurrentCharacter();
+        }
+
+        function loadCurrentCharacter() {
+            clearHintTimer();
+            cancelAnimationSequence(); 
+            const char = charList[currentIndex];
+            updateStatus(`載入「${char}」中...`);
+            clearActiveButtons();
+            
+            writer.setCharacter(char).then(() => {
+                resetCanvas();
+                updateStatus(`準備好了！請選擇模式。`);
+            }).catch(err => {
+                Swal.fire({
+                    icon: 'error',
+                    title: '找不到這個字',
+                    text: `字庫中沒有「${char}」，請點擊下一個字跳過喔！`,
+                    confirmButtonColor: '#d97706',
+                    confirmButtonText: '好'
+                });
+                resetCanvas();
+                updateStatus(`無法顯示「${char}」，請點擊下一個字。`, 'text-red-500');
+            });
+        }
+
+        function nextChar() {
+            if (currentIndex < charList.length - 1) {
+                currentIndex++;
+                updateNavUI();
+                loadCurrentCharacter();
+            }
+        }
+
+        function prevChar() {
+            if (currentIndex > 0) {
+                currentIndex--;
+                updateNavUI();
+                loadCurrentCharacter();
+            }
+        }
+
+        inputElement.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') loadCharacters();
+        });
+
+        document.addEventListener('keydown', function(e) {
+            if (document.activeElement.tagName === 'INPUT') return;
+            if (e.key === 'ArrowLeft') prevChar();
+            else if (e.key === 'ArrowRight') nextChar();
+        });
+
+        let touchStartX = 0;
+        let touchEndX = 0;
+        let isTwoFingerSwipe = false;
+        const paperContainer = document.getElementById('paper-container');
+
+        paperContainer.addEventListener('touchstart', function(e) {
+            if (e.touches.length === 2) {
+                isTwoFingerSwipe = true;
+                touchStartX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+                touchEndX = touchStartX;
+            } else {
+                isTwoFingerSwipe = false;
+            }
+        }, { capture: true });
+
+        paperContainer.addEventListener('touchmove', function(e) {
+            if (isTwoFingerSwipe && e.touches.length === 2) {
+                touchEndX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+                if (e.cancelable) e.preventDefault(); 
+            }
+        }, { capture: true, passive: false });
+
+        paperContainer.addEventListener('touchend', function(e) {
+            if (isTwoFingerSwipe) {
+                let swipeDistance = touchEndX - touchStartX;
+                const threshold = 40; 
+                
+                if (swipeDistance > threshold) prevChar(); 
+                else if (swipeDistance < -threshold) nextChar(); 
+                
+                isTwoFingerSwipe = false;
+            }
+        }, { capture: true });
+
+        window.onload = function() {
+            initWriter('天'); 
+            loadCharacters(); 
+        };
+    </script>
+</body>
+</html>
